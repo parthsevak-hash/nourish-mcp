@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: nourish-mcp
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NOURISH_API_KEY
+        generateValue: true
+      - key: NODE_ENV
+        value: production
+    healthCheckPath: /health

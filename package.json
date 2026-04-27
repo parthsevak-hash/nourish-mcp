@@ -1,0 +1,42 @@
+{
+  "name": "nourish-mcp",
+  "version": "0.1.0",
+  "description": "Nourish — Food-as-Medicine, Closed-Loop. SHARP-on-MCP server for paediatric food-insecurity referrals with outcomes back in the chart.",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "fhir",
+    "sharp",
+    "healthcare",
+    "paediatrics",
+    "food-as-medicine",
+    "social-determinants-of-health",
+    "agentforce",
+    "prompt-opinion"
+  ],
+  "author": "Parth Sevak",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "express": "^4.21.2",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
