@@ -47,8 +47,16 @@ function header(req: Request, name: string): string | null {
  *  - Condition.rs: clinical reason for elevated nutritional risk
  *  - AllergyIntolerance.rs: hard safety constraint on resource matching
  *  - Observation.rs/.cuds: read SDOH screenings, write outcomes back
- *  - ServiceRequest.cuds: create the referral itself
- *  - Task.cuds: track the referral through its lifecycle
+ *  - ServiceRequest.cuds: create the referral, track status transitions,
+ *    update to terminal status when the loop closes
+ *
+ * Architecture note: Nourish uses the FHIR ServiceRequest as both the
+ * clinical order and the lifecycle handle. ServiceRequest.status follows
+ * the standard R4 state machine (active → completed / revoked /
+ * entered-in-error), which is sufficient for closed-loop referral
+ * tracking. The Task resource is intentionally not used to keep the
+ * resource graph minimal and to align with the most common
+ * SDOH-referral implementation pattern.
  */
 export const NOURISH_SHARP_SCOPES = [
   { name: "patient/Patient.rs", required: true },
@@ -57,6 +65,4 @@ export const NOURISH_SHARP_SCOPES = [
   { name: "patient/Observation.rs", required: true },
   { name: "patient/Observation.cuds", required: true },
   { name: "patient/ServiceRequest.cuds", required: true },
-  { name: "patient/Task.rs", required: true },
-  { name: "patient/Task.cud", required: true },
 ] as const;

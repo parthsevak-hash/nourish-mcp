@@ -74,8 +74,8 @@ const tools = [
     name: "submit_referral",
     description:
       "Submit a food-insecurity referral for the patient to a chosen resource. " +
-      "Creates a FHIR ServiceRequest (the clinical order) and a paired Task (the lifecycle handle). " +
-      "Returns the task_id, which is required for check_referral_status and record_outcome.",
+      "Creates a FHIR ServiceRequest with status=active. " +
+      "Returns a referral_id, which is required for check_referral_status and record_outcome.",
     schema: submitReferralInput,
     handler: submitReferral,
   },
@@ -83,6 +83,7 @@ const tools = [
     name: "check_referral_status",
     description:
       "Read the current status of a previously submitted referral. " +
+      "Reads the FHIR ServiceRequest by referral_id. " +
       "Flags referrals stale for more than 72 hours so the provider can follow up.",
     schema: checkReferralStatusInput,
     handler: checkReferralStatus,
@@ -91,7 +92,8 @@ const tools = [
     name: "record_outcome",
     description:
       "Record the terminal outcome of a referral (delivered | no_show | declined | ineligible). " +
-      "Updates the Task and writes a FHIR Observation linked to the original ServiceRequest, " +
+      "Updates the ServiceRequest status to completed (delivered) or revoked (other outcomes) " +
+      "and writes a FHIR Observation linked to the original ServiceRequest, " +
       "so the next provider opening the chart sees whether the intervention reached the family. " +
       "This is the loop-closing step — without it, the referral is 'submit and forget'.",
     schema: recordOutcomeInput,

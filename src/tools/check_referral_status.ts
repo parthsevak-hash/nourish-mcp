@@ -1,8 +1,12 @@
 /**
  * check_referral_status
  *
- * Reads the FHIR Task that tracks a referral and reports its current
- * status in plain language the agent can relay to the clinician.
+ * Reads the FHIR ServiceRequest that represents the referral and
+ * reports its current status in plain language the agent can relay
+ * to the clinician.
+ *
+ * Flags referrals that have been in `active` status for more than
+ * 72 hours — the absence of a closure event is itself signal.
  */
 
 import { z } from "zod";
@@ -10,24 +14,21 @@ import type { SharpContext } from "../sharp/context.js";
 import { FhirClient } from "../fhir/client.js";
 
 export const checkReferralStatusInput = z.object({
-  task_id: z
+  referral_id: z
     .string()
-    .describe("The Task id returned by submit_referral."),
+    .describe("The referral_id returned by submit_referral. This is the FHIR ServiceRequest id."),
 });
 
 export type CheckReferralStatusInput = z.infer<typeof checkReferralStatusInput>;
 
 const STATUS_PLAIN: Record<string, string> = {
-  requested: "Submitted to the pantry. Awaiting acknowledgement.",
-  received: "Pantry has acknowledged the referral.",
-  accepted: "Pantry has accepted the referral and is preparing the hamper.",
-  ready: "Hamper is prepared. Awaiting pickup or delivery.",
-  "in-progress": "Pickup or delivery in progress.",
+  draft: "Draft. Not yet submitted to the pantry.",
+  active: "Submitted to the pantry. Awaiting fulfillment.",
+  "on-hold": "On hold pending more information.",
+  revoked: "Cancelled or declined. Try an alternative resource.",
   completed: "Family has received the food.",
-  rejected: "Pantry declined the referral. Try an alternative resource.",
-  cancelled: "Referral was cancelled.",
-  "on-hold": "Referral is on hold pending more information.",
-  failed: "Referral failed. Try an alternative resource.",
+  "entered-in-error": "Referral was entered in error.",
+  unknown: "Status unknown.",
 };
 
 export async function checkReferralStatus(
@@ -35,24 +36,23 @@ export async function checkReferralStatus(
   input: CheckReferralStatusInput
 ) {
   const fhir = new FhirClient(ctx);
-  const task = await fhir.read("Task", input.task_id);
+  const serviceRequest = await fhir.read("ServiceRequest", input.referral_id);
 
-  const focusRef: string | undefined = task?.focus?.reference;
-  const serviceRequestId = focusRef?.startsWith("ServiceRequest/")
-    ? focusRef.slice("ServiceRequest/".length)
-    : null;
-
-  const status: string = task?.status ?? "unknown";
+  const status: string = serviceRequest?.status ?? "unknown";
   const plain = STATUS_PLAIN[status] ?? `Status: ${status}.`;
-  const businessStatus = task?.businessStatus?.text ?? null;
-  const lastModified = task?.lastModified ?? null;
+  const authoredOn: string | null = serviceRequest?.authoredOn ?? null;
+  const lastUpdated: string | null =
+    serviceRequest?.meta?.lastUpdated ?? authoredOn ?? null;
 
-  // Loop-not-closed signal
-  const ageHours = lastModified
-    ? (Date.now() - new Date(lastModified).getTime()) / 3_600_000
+  // Loop-not-closed signal — referral has been active more than 72 hours.
+  const ageHours = lastUpdated
+    ? (Date.now() - new Date(lastUpdated).getTime()) / 3_600_000
     : 0;
-  const stale =
-    ["requested", "received", "accepted"].includes(status) && ageHours > 72;
+  const stale = status === "active" && ageHours > 72;
+
+  // Performing pantry, if recorded
+  const performer = serviceRequest?.performer?.[0];
+  const performerName: string | null = performer?.display ?? null;
 
   return {
     content: [
@@ -60,16 +60,16 @@ export async function checkReferralStatus(
         type: "text" as const,
         text: JSON.stringify(
           {
-            task_id: input.task_id,
-            service_request_id: serviceRequestId,
+            referral_id: input.referral_id,
             patient_id: ctx.patientId,
             status,
             status_plain: plain,
-            business_status: businessStatus,
-            last_modified: lastModified,
+            performer: performerName,
+            authored_on: authoredOn,
+            last_updated: lastUpdated,
             stale_followup_recommended: stale,
             stale_message: stale
-              ? `This referral has been ${status} for over 72 hours. Surface it to the provider as a follow-up flag.`
+              ? `This referral has been active for over 72 hours. Surface it to the provider as a follow-up flag.`
               : null,
           },
           null,

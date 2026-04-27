@@ -1,12 +1,14 @@
 /**
  * submit_referral
  *
- * Creates a FHIR ServiceRequest representing the clinical referral and
- * a paired Task that tracks the referral through its lifecycle. Both
- * resources are anchored to the patient via the SHARP context.
+ * Creates a FHIR ServiceRequest representing the clinical referral.
+ * The ServiceRequest itself is the lifecycle handle — its status field
+ * follows the standard FHIR R4 state machine (active → completed /
+ * revoked / entered-in-error) and is sufficient for closed-loop
+ * referral tracking.
  *
- * Returns the Task id, which is the canonical handle the agent uses
- * for status checks and outcome recording.
+ * Returns the referral_id (the ServiceRequest id), which is the
+ * canonical handle for check_referral_status and record_outcome.
  */
 
 import { z } from "zod";
@@ -69,10 +71,11 @@ export async function submitReferral(
   }
 
   const fhir = new FhirClient(ctx);
-
   const now = new Date().toISOString();
 
-  // 1. ServiceRequest — the clinical order
+  // Single ServiceRequest — both the clinical order and the lifecycle handle.
+  // status=active means submitted and in flight. record_outcome will move
+  // status to completed (delivered) or revoked (no_show / declined / ineligible).
   const serviceRequest = await fhir.create("ServiceRequest", {
     resourceType: "ServiceRequest",
     meta: {
@@ -110,50 +113,15 @@ export async function submitReferral(
     },
     subject: { reference: `Patient/${ctx.patientId}` },
     authoredOn: now,
+    occurrenceDateTime: now,
     reasonCode: [{ text: input.reason_text }],
-    note: input.notes_for_pantry ? [{ text: input.notes_for_pantry }] : undefined,
+    note: input.notes_for_pantry ? [{ text: input.notes_for_pantry, time: now }] : undefined,
     performer: [
       {
         display: resource.name,
         identifier: { value: resource.id },
       },
     ],
-  });
-
-  // 2. Task — the lifecycle handle
-  const task = await fhir.create("Task", {
-    resourceType: "Task",
-    meta: {
-      tag: [
-        {
-          system: "https://nourish.health/CodeSystem/source",
-          code: "nourish-mcp",
-          display: "Created by Nourish MCP server",
-        },
-      ],
-    },
-    status: "requested",
-    intent: "order",
-    priority: "routine",
-    code: {
-      coding: [
-        {
-          system: "http://hl7.org/fhir/CodeSystem/task-code",
-          code: "fulfill",
-          display: "Fulfill the focal request",
-        },
-      ],
-      text: "Fulfill food-insecurity referral",
-    },
-    description: `Food-insecurity referral to ${resource.name}. ${input.reason_text}`,
-    focus: { reference: `ServiceRequest/${serviceRequest.id}` },
-    for: { reference: `Patient/${ctx.patientId}` },
-    authoredOn: now,
-    lastModified: now,
-    owner: {
-      display: resource.name,
-      identifier: { value: resource.id },
-    },
   });
 
   return {
@@ -163,8 +131,8 @@ export async function submitReferral(
         text: JSON.stringify(
           {
             referral_submitted: true,
-            service_request_id: serviceRequest.id,
-            task_id: task.id,
+            referral_id: serviceRequest.id,
+            status: "active",
             resource: {
               id: resource.id,
               name: resource.name,
@@ -172,8 +140,8 @@ export async function submitReferral(
               referral_intake_url: resource.referralIntakeUrl,
             },
             next_step:
-              `Track this referral by calling check_referral_status with task_id="${task.id}". ` +
-              `When the family confirms food received, call record_outcome with status="delivered".`,
+              `Track this referral by calling check_referral_status with referral_id="${serviceRequest.id}". ` +
+              `When the family confirms food received, call record_outcome with outcome="delivered".`,
           },
           null,
           2

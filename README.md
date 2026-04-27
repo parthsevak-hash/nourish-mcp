@@ -18,9 +18,9 @@ Four MCP tools that turn a paediatric food-insecurity screening into a closed-lo
 | Tool | Purpose | FHIR effect |
 |---|---|---|
 | `find_food_resources` | Match patient to community food resources | Reads `Patient`, `AllergyIntolerance` |
-| `submit_referral` | Submit referral to the chosen resource | Creates `ServiceRequest` + `Task` |
-| `check_referral_status` | Track the referral through its lifecycle | Reads `Task` |
-| `record_outcome` | Close the loop with a terminal outcome | Updates `Task`, creates `Observation` |
+| `submit_referral` | Submit referral to the chosen resource | Creates `ServiceRequest` (status=active) |
+| `check_referral_status` | Track the referral through its lifecycle | Reads `ServiceRequest` |
+| `record_outcome` | Close the loop with a terminal outcome | Updates `ServiceRequest.status`, creates `Observation` |
 
 ### The architectural-matching principle
 
@@ -30,7 +30,7 @@ These safety properties are proven in code. See [`test/matcher.test.ts`](./test/
 
 ### The closed-loop principle
 
-Every referral creates a FHIR `Task` with a terminal status. The absence of a closure event is itself signal — `check_referral_status` flags any referral stale for over 72 hours so the provider can follow up. `record_outcome` writes a FHIR `Observation` linked to the original `ServiceRequest`, so the next provider opening the chart sees both the screening result *and* whether the intervention reached the family.
+The single FHIR `ServiceRequest` resource is both the clinical order and the lifecycle handle. Its `status` field follows the standard FHIR R4 state machine — `active` while the referral is in flight, `completed` when the family has received food, `revoked` when the referral ends without delivery. `check_referral_status` flags any referral active for more than 72 hours so the provider can follow up. `record_outcome` writes a FHIR `Observation` linked via `derivedFrom` to the original `ServiceRequest`, so the next provider opening the chart sees both the screening result *and* whether the intervention reached the family.
 
 Without that link, every referral is "submit and forget." With it, the chart tells the truth.
 
@@ -53,9 +53,9 @@ Prompt Opinion injects FHIR context headers into every tool call:
 Nourish MCP Server  ◀── this repo
      |
      |── find_food_resources    (deterministic match → ranked list)
-     |── submit_referral        (creates FHIR ServiceRequest + Task)
-     |── check_referral_status  (reads FHIR Task, flags 72h+ stale)
-     |── record_outcome         (updates Task, writes Observation)
+     |── submit_referral        (creates FHIR ServiceRequest, status=active)
+     |── check_referral_status  (reads ServiceRequest, flags 72h+ active)
+     |── record_outcome         (updates ServiceRequest.status, writes Observation)
      |
      v
 Patient FHIR record (in the EHR / FHIR sandbox)
@@ -76,8 +76,9 @@ Nourish declares these scopes via the `ai.promptopinion/fhir-context` MCP extens
 | `patient/AllergyIntolerance.rs` | yes | Hard safety constraint on resource matching |
 | `patient/Observation.rs` | yes | Read prior SDOH screenings |
 | `patient/Observation.cuds` | yes | Write intervention outcomes |
-| `patient/ServiceRequest.cuds` | yes | Create the referral itself |
-| `patient/Task.cuds` | yes | Track referral lifecycle |
+| `patient/ServiceRequest.cuds` | yes | Create the referral, track its status, transition to terminal state on closure |
+
+The architecture intentionally keeps the FHIR resource graph minimal: one `ServiceRequest` per referral acts as both the clinical order and the lifecycle handle. The `Task` resource is not used. This keeps the consent surface tighter and aligns with the most common SDOH-referral implementation pattern in the field.
 
 ---
 
