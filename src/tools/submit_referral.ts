@@ -124,6 +124,11 @@ export async function submitReferral(
     ],
   });
 
+  console.log(
+    `[submit_referral] FHIR returned ServiceRequest id=${serviceRequest?.id ?? "<missing>"}` +
+      ` for patient=${ctx.patientId} resource=${resource.id} (${resource.name})`
+  );
+
   return {
     content: [
       {

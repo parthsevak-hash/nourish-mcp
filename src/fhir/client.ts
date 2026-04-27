@@ -13,6 +13,7 @@ export class FhirClient {
         "FHIR server URL missing from SHARP context. Was the server registered without the FHIR extension authorized?"
       );
     }
+    console.log(`[fhir] base=${ctx.fhirServerUrl}`);
   }
 
   async read(resourceType: string, id: string): Promise<any> {
@@ -49,11 +50,14 @@ export class FhirClient {
       headers.Authorization = `Bearer ${this.ctx.fhirAccessToken}`;
     }
 
+    const t0 = Date.now();
     const res = await fetch(url, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
     });
+    const dur = Date.now() - t0;
+    console.log(`[fhir] ${method} ${path} -> ${res.status} (${dur}ms)`);
 
     if (!res.ok) {
       const text = await res.text();
