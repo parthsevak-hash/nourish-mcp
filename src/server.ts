@@ -222,6 +222,7 @@ const app = express();
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/health", (_req, res) => {
+  console.log("[health] check");
   res.json({
     server: SERVER_NAME,
     version: SERVER_VERSION,
@@ -231,11 +232,14 @@ app.get("/health", (_req, res) => {
 });
 
 app.post("/mcp", async (req: Request, res: Response) => {
+  const t0 = Date.now();
+
   // 1. API-key gate
   if (REQUIRED_API_KEY) {
     const provided = req.headers["x-api-key"];
     const provided1 = Array.isArray(provided) ? provided[0] : provided;
     if (provided1 !== REQUIRED_API_KEY) {
+      console.log(`[mcp] 401 Unauthorized (no/bad x-api-key)`);
       res.status(401).json({
         jsonrpc: "2.0",
         error: { code: -32001, message: "Unauthorized" },
@@ -245,7 +249,23 @@ app.post("/mcp", async (req: Request, res: Response) => {
     }
   }
 
-  // 2. New per-request server + transport. Streamable HTTP is stateless;
+  // 2. Log the inbound request shape and SHARP context arrival
+  const method = req.body?.method ?? "?";
+  const toolName =
+    method === "tools/call" ? req.body?.params?.name ?? "?" : null;
+  const ctx = readSharpContext(req);
+  const sharpSummary = {
+    fhir_url: ctx.fhirServerUrl ? "present" : "missing",
+    fhir_token: ctx.fhirAccessToken ? "present" : "missing",
+    patient_id: ctx.patientId ?? "missing",
+  };
+  console.log(
+    `[mcp] in  method=${method}${
+      toolName ? ` tool=${toolName}` : ""
+    } sharp=${JSON.stringify(sharpSummary)}`
+  );
+
+  // 3. New per-request server + transport. Streamable HTTP is stateless;
   //    we build a fresh MCP server for this request so we can read the
   //    SHARP context off the live req object inside tool handlers.
   const server = buildMcpServer(req);
@@ -254,6 +274,12 @@ app.post("/mcp", async (req: Request, res: Response) => {
   });
 
   res.on("close", () => {
+    const dur = Date.now() - t0;
+    console.log(
+      `[mcp] out method=${method}${
+        toolName ? ` tool=${toolName}` : ""
+      } status=${res.statusCode} dur_ms=${dur}`
+    );
     transport.close();
     server.close();
   });
