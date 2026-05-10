@@ -64,5 +64,6 @@ export const NOURISH_SHARP_SCOPES = [
   { name: "patient/AllergyIntolerance.rs", required: true },
   { name: "patient/Observation.rs", required: true },
   { name: "patient/Observation.cuds", required: true },
-  { name: "patient/ServiceRequest.cuds", required: true },
+  { name: "patient/ServiceRequest.rs", required: true },
+  { name: "patient/ServiceRequest.cud", required: true },
 ] as const;
