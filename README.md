@@ -19,7 +19,7 @@ The production server is deployed on Render and listed in the Prompt Opinion Mar
 - **Health check:** [https://nourish-mcp.onrender.com/health](https://nourish-mcp.onrender.com/health) — returns the server identity and SHARP extension declaration.
 - **MCP endpoint:** `https://nourish-mcp.onrender.com/mcp` — Streamable HTTP transport, API-key authenticated.
 - **Demo video:** [Link added after recording]
-- **Prompt Opinion Marketplace listing:** [Link added after publish]
+- **Prompt Opinion Marketplace listing:** [https://app.promptopinion.ai/marketplace/mcp/019e1404-b589-7da9-9a15-18431729655c](https://app.promptopinion.ai/marketplace/mcp/019e1404-b589-7da9-9a15-18431729655c)
 
 > The free-tier Render service sleeps after ~15 minutes of inactivity. The first request after sleep takes ~30 seconds to wake. Subsequent requests are fast.
 
@@ -231,11 +231,11 @@ The Blueprint pins Node 22 LTS via `.node-version`, uses `npm install --include=
 
 ---
 
-## Publishing to the Marketplace
+## Marketplace listing
 
-After end-to-end success on at least one patient: **Marketplace Studio → MCP Servers → New Listing**.
+Nourish is published on the [Prompt Opinion Marketplace](https://app.promptopinion.ai/marketplace/mcp/019e1404-b589-7da9-9a15-18431729655c) and is installable by any Prompt Opinion workspace. The listing surfaces the seven SHARP scopes Nourish requests at install time, and connects to the live server running at `https://nourish-mcp.onrender.com/mcp`.
 
-The published Marketplace URL is what gets pasted into the **"Published URL from Prompt Opinion Marketplace"** field on the Devpost submission form.
+Authentication is required — contact the publisher for an API key. The server stores no patient data of its own; every read flows through the platform-injected access token.
 
 ---
 
