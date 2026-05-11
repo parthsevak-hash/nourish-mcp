@@ -8,6 +8,20 @@ A SHARP-on-MCP server for paediatric food-insecurity referrals. Built for the Pr
 ![mcp](https://img.shields.io/badge/MCP-Streamable_HTTP-blue)
 ![fhir](https://img.shields.io/badge/FHIR-R4-blue)
 ![sharp](https://img.shields.io/badge/SHARP-on--MCP-blue)
+![live](https://img.shields.io/badge/status-live-success)
+
+---
+
+## Live demo
+
+The production server is deployed on Render and listed in the Prompt Opinion Marketplace.
+
+- **Health check:** [https://nourish-mcp.onrender.com/health](https://nourish-mcp.onrender.com/health) — returns the server identity and SHARP extension declaration.
+- **MCP endpoint:** `https://nourish-mcp.onrender.com/mcp` — Streamable HTTP transport, API-key authenticated.
+- **Demo video:** [Link added after recording]
+- **Prompt Opinion Marketplace listing:** [Link added after publish]
+
+> The free-tier Render service sleeps after ~15 minutes of inactivity. The first request after sleep takes ~30 seconds to wake. Subsequent requests are fast.
 
 ---
 
@@ -43,7 +57,7 @@ Clinician on Prompt Opinion Launchpad
      |
      v
 BYO Agent: Nourish — Paediatric Food-as-Medicine
-     |  (LLM reasons, picks tool, fills params)
+     |  (Gemini 2.5 Flash reasons, picks tool, fills params)
      v
 Prompt Opinion injects FHIR context headers into every tool call:
      |    X-FHIR-Server-URL
@@ -76,9 +90,12 @@ Nourish declares these scopes via the `ai.promptopinion/fhir-context` MCP extens
 | `patient/AllergyIntolerance.rs` | yes | Hard safety constraint on resource matching |
 | `patient/Observation.rs` | yes | Read prior SDOH screenings |
 | `patient/Observation.cuds` | yes | Write intervention outcomes |
-| `patient/ServiceRequest.cuds` | yes | Create the referral, track its status, transition to terminal state on closure |
+| `patient/ServiceRequest.rs` | yes | Read referral status during lifecycle tracking |
+| `patient/ServiceRequest.cud` | yes | Create the referral and transition it to terminal state on closure |
 
-The architecture intentionally keeps the FHIR resource graph minimal: one `ServiceRequest` per referral acts as both the clinical order and the lifecycle handle. The `Task` resource is not used. This keeps the consent surface tighter and aligns with the most common SDOH-referral implementation pattern in the field.
+Seven scopes total. The architecture intentionally keeps the FHIR resource graph minimal: one `ServiceRequest` per referral acts as both the clinical order and the lifecycle handle. The `Task` resource is not used. This keeps the consent surface tighter and aligns with the most common SDOH-referral implementation pattern in the field.
+
+The `ServiceRequest` scope is split into `.rs` (read + search) and `.cud` (create + update + delete) because SMART scope grammar treats reads-by-id separately from writes — and the Prompt Opinion platform's scope catalog renders them as distinct checkboxes.
 
 ---
 
@@ -152,6 +169,20 @@ The server starts on `http://localhost:8080`. Health check at `GET /health`. MCP
 
 In dev with `NOURISH_API_KEY` unset, the server accepts all callers (logged as a warning at startup). In production, set the env var; clients must send `x-api-key: <value>`.
 
+### Observability
+
+Every MCP request and every FHIR call is logged to stdout in structured form:
+
+```
+[mcp] in  method=tools/call tool=find_food_resources sharp={"fhir_url":"present","fhir_token":"present","patient_id":"..."}
+[fhir] base=https://app.promptopinion.ai/api/workspaces/.../fhir
+[fhir] GET Patient/... -> 200 (501ms)
+[fhir] GET AllergyIntolerance?patient=... -> 200 (248ms)
+[mcp] out method=tools/call tool=find_food_resources status=200 dur_ms=758
+```
+
+This is what proves an agent is actually calling tools rather than hallucinating outputs. Recommended viewing during development: `tail -f` your stdout or filter Render Logs by `tool=`.
+
 ---
 
 ## Deploying to Render
@@ -163,7 +194,7 @@ This repo includes [`render.yaml`](./render.yaml) — a Render Blueprint that pr
 3. Render reads `render.yaml`, provisions the web service, and auto-generates `NOURISH_API_KEY`.
 4. Wait ~3 minutes. Your endpoint is at `https://<service-name>.onrender.com/mcp`.
 
-(Free tier sleeps after idle. First request after sleep takes ~30s. For a live demo, hit `/health` 30 seconds before the camera rolls.)
+The Blueprint pins Node 22 LTS via `.node-version`, uses `npm install --include=dev` (devDependencies are needed at build time for `tsc`), and sets `NODE_ENV=production` for runtime.
 
 ---
 
@@ -178,8 +209,9 @@ This repo includes [`render.yaml`](./render.yaml) — a Render Blueprint that pr
    - **API Key Header Name:** `x-api-key`
    - **API Key Header Value:** the `NOURISH_API_KEY` Render generated
 3. Click **Continue**. The platform sends `initialize` and reads the SHARP extension declaration.
-4. The consent screen lists the seven FHIR scopes Nourish requests. Authorize them.
-5. Save.
+4. **Enable Prompt Opinion Extension** toggle: ON.
+5. Pick **Selective Permissions** (recommended over Full Authority). The consent screen lists the seven FHIR scopes Nourish requests. Authorize them.
+6. Save.
 
 ---
 
@@ -187,14 +219,15 @@ This repo includes [`render.yaml`](./render.yaml) — a Render Blueprint that pr
 
 1. **Agents → BYO Agents → Add AI Agent**
 2. **Name:** `Nourish — Paediatric Food-as-Medicine`
-3. **System Prompt:** click **Load Default**, then append the prompt from [`prompts/system.md`](./prompts/system.md).
-4. **Tools:** attach the `Nourish` MCP server. All four tools become available to the agent.
-5. **A2A & Skills:** enable A2A. Declare two skills:
+3. **Allowed Contexts:** Patient (only)
+4. **Model Configuration:** Gemini 2.5 Flash (or any reasoning model that supports MCP tool calls)
+5. **Po Chat Selectable:** ON
+6. **System Prompt:** click **Load Default**, then append the prompt from [`prompts/system.md`](./prompts/system.md).
+7. **Tools:** attach the `Nourish` MCP server. All four tools become available to the agent.
+8. **A2A & Skills:** enable A2A. Enable FHIR Context Extension. Declare two skills:
    - `screen_and_refer` — find resources, submit a referral
    - `track_to_outcome` — check status, record outcome
-
-   Mark FHIR context as **required**.
-6. Save and enable on the Launchpad.
+9. Save and enable on the Launchpad.
 
 ---
 
@@ -221,11 +254,11 @@ In production, this directory would be sourced from a community-resource aggrega
 ```
 nourish-mcp/
 ├── src/
-│   ├── server.ts                 Streamable HTTP MCP server, API-key auth, SHARP extension declaration
+│   ├── server.ts                 Streamable HTTP MCP server, API-key auth, SHARP extension declaration, request/response logging
 │   ├── sharp/
-│   │   └── context.ts            Reads FHIR context headers; declares SHARP scopes
+│   │   └── context.ts            Reads FHIR context headers; declares the 7 SHARP scopes
 │   ├── fhir/
-│   │   └── client.ts             Minimal FHIR R4 client; never persists patient data
+│   │   └── client.ts             Minimal FHIR R4 client with structured logging; never persists patient data
 │   ├── directory/
 │   │   ├── resources.ts          Seeded GTA food-resource directory (sample data, see above)
 │   │   └── matcher.ts            Two-stage matcher: hard safety filters then ranked scoring
@@ -242,8 +275,15 @@ nourish-mcp/
 ├── package.json
 ├── tsconfig.json
 ├── tsconfig.test.json
+├── .node-version                 Pinned: 22
 └── README.md
 ```
+
+---
+
+## Acknowledgements
+
+Built on the [Model Context Protocol](https://modelcontextprotocol.io) and the [SMART-on-FHIR](https://hl7.org/fhir/smart-app-launch/) scope grammar. Deployed on the [Prompt Opinion](https://promptopinion.ai) platform.
 
 ---
 
