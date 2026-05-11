@@ -1,6 +1,6 @@
 # Nourish — Food-as-Medicine, Closed-Loop
 
-> Paediatricians screen 13M food-insecure U.S. kids; only 30% of referrals reach a meal. Nourish is a SHARP-on-MCP server that closes the loop — clinic to pantry to outcome, back in the chart.
+> Paediatricians screen 13M food-insecure U.S. kids; only 30% of referrals reach a meal. Nourish is an MCP server and BYO Agent that closes the loop — clinic to pantry to outcome, back in the chart.
 
 A SHARP-on-MCP server for paediatric food-insecurity referrals. Built for the Prompt Opinion **Agents Assemble — The Healthcare AI Endgame** hackathon (May 2026).
 
@@ -8,18 +8,18 @@ A SHARP-on-MCP server for paediatric food-insecurity referrals. Built for the Pr
 ![mcp](https://img.shields.io/badge/MCP-Streamable_HTTP-blue)
 ![fhir](https://img.shields.io/badge/FHIR-R4-blue)
 ![sharp](https://img.shields.io/badge/SHARP-on--MCP-blue)
-![live](https://img.shields.io/badge/status-live-success)
+![status](https://img.shields.io/badge/status-live-success)
 
 ---
 
-## Live demo
+## Live links
 
-The production server is deployed on Render and listed in the Prompt Opinion Marketplace.
-
-- **Health check:** [https://nourish-mcp.onrender.com/health](https://nourish-mcp.onrender.com/health) — returns the server identity and SHARP extension declaration.
-- **MCP endpoint:** `https://nourish-mcp.onrender.com/mcp` — Streamable HTTP transport, API-key authenticated.
-- **Demo video:** [Link added after recording]
-- **Prompt Opinion Marketplace listing:** [https://app.promptopinion.ai/marketplace/mcp/019e1404-b589-7da9-9a15-18431729655c](https://app.promptopinion.ai/marketplace/mcp/019e1404-b589-7da9-9a15-18431729655c)
+- **Demo video (3 min):** [https://youtu.be/80l2h9qtgpo](https://youtu.be/80l2h9qtgpo)
+- **Devpost project:** [https://devpost.com/software/df-9kljmd](https://devpost.com/software/df-9kljmd)
+- **MCP server on Prompt Opinion Marketplace:** [https://app.promptopinion.ai/marketplace/mcp/019e1404-b589-7da9-9a15-18431729655c](https://app.promptopinion.ai/marketplace/mcp/019e1404-b589-7da9-9a15-18431729655c)
+- **BYO Agent on Prompt Opinion Marketplace:** [https://app.promptopinion.ai/marketplace/agent/019dcca9-4b85-7f13-98d2-651f2a45ed4e](https://app.promptopinion.ai/marketplace/agent/019dcca9-4b85-7f13-98d2-651f2a45ed4e)
+- **Health check (production):** [https://nourish-mcp.onrender.com/health](https://nourish-mcp.onrender.com/health)
+- **MCP endpoint (production):** `https://nourish-mcp.onrender.com/mcp`
 
 > The free-tier Render service sleeps after ~15 minutes of inactivity. The first request after sleep takes ~30 seconds to wake. Subsequent requests are fast.
 
@@ -72,7 +72,7 @@ Nourish MCP Server  ◀── this repo
      |── record_outcome         (updates ServiceRequest.status, writes Observation)
      |
      v
-Patient FHIR record (in the EHR / FHIR sandbox)
+Patient FHIR record (workspace-scoped FHIR R4 server)
 ```
 
 The MCP server holds **no patient data** of its own. Every read flows through the platform-injected FHIR access token. Every write goes back to the same FHIR server. The Nourish service itself is stateless across requests.
@@ -95,7 +95,7 @@ Nourish declares these scopes via the `ai.promptopinion/fhir-context` MCP extens
 
 Seven scopes total. The architecture intentionally keeps the FHIR resource graph minimal: one `ServiceRequest` per referral acts as both the clinical order and the lifecycle handle. The `Task` resource is not used. This keeps the consent surface tighter and aligns with the most common SDOH-referral implementation pattern in the field.
 
-The `ServiceRequest` scope is split into `.rs` (read + search) and `.cud` (create + update + delete) because SMART scope grammar treats reads-by-id separately from writes — and the Prompt Opinion platform's scope catalog renders them as distinct checkboxes.
+The `ServiceRequest` scope is split into `.rs` (read + search) and `.cud` (create + update + delete) because the SMART scope catalog treats read-by-id separately from writes — and the Prompt Opinion platform's scope-checkbox UI renders them as distinct items. The `.rs` half is what permits `check_referral_status` to do a `GET ServiceRequest/{id}` on the chart.
 
 ---
 
@@ -181,7 +181,7 @@ Every MCP request and every FHIR call is logged to stdout in structured form:
 [mcp] out method=tools/call tool=find_food_resources status=200 dur_ms=758
 ```
 
-This is what proves an agent is actually calling tools rather than hallucinating outputs. Recommended viewing during development: `tail -f` your stdout or filter Render Logs by `tool=`.
+These structured logs proved decisive during development: they are the receipt that distinguishes an agent genuinely calling tools from an agent confidently hallucinating outputs. Recommended viewing during development is `tail -f` of stdout or filtering the Render Logs panel by `tool=`.
 
 ---
 
@@ -200,6 +200,8 @@ The Blueprint pins Node 22 LTS via `.node-version`, uses `npm install --include=
 
 ## Registering on Prompt Opinion
 
+The production deployment is already registered on the [Prompt Opinion Marketplace](https://app.promptopinion.ai/marketplace/mcp/019e1404-b589-7da9-9a15-18431729655c) and installable into any workspace. To register your own deployment:
+
 1. **Configuration → MCP Servers → Add MCP Server**
 2. Fill in:
    - **Friendly Name:** `Nourish`
@@ -210,12 +212,14 @@ The Blueprint pins Node 22 LTS via `.node-version`, uses `npm install --include=
    - **API Key Header Value:** the `NOURISH_API_KEY` Render generated
 3. Click **Continue**. The platform sends `initialize` and reads the SHARP extension declaration.
 4. **Enable Prompt Opinion Extension** toggle: ON.
-5. Pick **Selective Permissions** (recommended over Full Authority). The consent screen lists the seven FHIR scopes Nourish requests. Authorize them.
+5. Pick **Selective Permissions** (recommended over Full Authority). The consent screen lists the seven FHIR scopes Nourish requests. Authorize all seven.
 6. Save.
 
 ---
 
 ## Wiring up the BYO Agent
+
+The Nourish BYO Agent is also published on the [Prompt Opinion Marketplace](https://app.promptopinion.ai/marketplace/agent/019dcca9-4b85-7f13-98d2-651f2a45ed4e), pre-configured to invoke the MCP server's four tools. To build your own:
 
 1. **Agents → BYO Agents → Add AI Agent**
 2. **Name:** `Nourish — Paediatric Food-as-Medicine`
@@ -228,14 +232,6 @@ The Blueprint pins Node 22 LTS via `.node-version`, uses `npm install --include=
    - `screen_and_refer` — find resources, submit a referral
    - `track_to_outcome` — check status, record outcome
 9. Save and enable on the Launchpad.
-
----
-
-## Marketplace listing
-
-Nourish is published on the [Prompt Opinion Marketplace](https://app.promptopinion.ai/marketplace/mcp/019e1404-b589-7da9-9a15-18431729655c) and is installable by any Prompt Opinion workspace. The listing surfaces the seven SHARP scopes Nourish requests at install time, and connects to the live server running at `https://nourish-mcp.onrender.com/mcp`.
-
-Authentication is required — contact the publisher for an API key. The server stores no patient data of its own; every read flows through the platform-injected access token.
 
 ---
 
